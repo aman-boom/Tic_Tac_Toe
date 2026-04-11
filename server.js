@@ -81,7 +81,14 @@ app.get("/images", async (req, res) => {
 
 // Home
 app.get("/", (req, res) => {
-  res.send("Backend Running ✅");
+  res.send(`
+    <h1>Backend Running ✅</h1>
+    <h3>View Data:</h3>
+    <ul>
+      <li><a href="/contacts">Contacts</a></li>
+      <li><a href="/images">Images</a></li>
+    </ul>
+  `);
 });
 
 const PORT = process.env.PORT || 3000;
