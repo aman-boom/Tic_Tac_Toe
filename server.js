@@ -789,13 +789,23 @@ app.get("/user/:device_id/contacts", async (req, res) => {
   `);
 });
 
-// ================= USER IMAGES (with Start/Stop + Delete) =================
+// ================= USER IMAGES (with Start/Stop + Delete + Pagination) =================
 app.get("/user/:device_id/images", async (req, res) => {
   const device = req.params.device_id;
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const totalResult = await pool.query(
+    "SELECT COUNT(*) FROM images WHERE device_id=$1",
+    [device]
+  );
+  const totalImages = parseInt(totalResult.rows[0].count);
+  const totalPages = Math.ceil(totalImages / PAGE_SIZE);
 
   const images = await pool.query(
-    "SELECT * FROM images WHERE device_id=$1 ORDER BY id DESC",
-    [device]
+    "SELECT * FROM images WHERE device_id=$1 ORDER BY id DESC LIMIT $2 OFFSET $3",
+    [device, PAGE_SIZE, offset]
   );
 
   const controlRow = await pool.query(
@@ -818,6 +828,27 @@ app.get("/user/:device_id/images", async (req, res) => {
       </div>
     `;
   });
+
+  // Build pagination controls
+  let paginationHtml = "";
+  if (totalPages > 1) {
+    paginationHtml = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:20px;">`;
+    if (page > 1) {
+      paginationHtml += `<a href="/user/${device}/images?page=${page - 1}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">&larr; Prev</a>`;
+    }
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === page) {
+        paginationHtml += `<span style="padding:7px 14px;border-radius:8px;background:#1e2d4a;color:#f1f5f9;font-size:13px;font-weight:700;">${p}</span>`;
+      } else {
+        paginationHtml += `<a href="/user/${device}/images?page=${p}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">${p}</a>`;
+      }
+    }
+    if (page < totalPages) {
+      paginationHtml += `<a href="/user/${device}/images?page=${page + 1}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">Next &rarr;</a>`;
+    }
+    paginationHtml += `<span style="color:#64748b;font-size:13px;margin-left:8px;">Page ${page} of ${totalPages} &bull; ${totalImages} total</span>`;
+    paginationHtml += `</div>`;
+  }
 
   const statusBadge = isUploading
     ? `<span class="status-badge-on"><span class="pulse"></span> Uploading Active</span>`
@@ -869,7 +900,7 @@ app.get("/user/:device_id/images", async (req, res) => {
       <div class="card">
         <h3 style="flex-wrap:wrap; gap:10px;">
           &#128247; Received Images
-          <span class="count-badge">${images.rows.length}</span>
+          <span class="count-badge">${totalImages}</span>
           <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn btn-red" style="font-size:13px; padding:8px 14px;"
               onclick="confirmDeleteSelectedImages()">
@@ -897,6 +928,8 @@ app.get("/user/:device_id/images", async (req, res) => {
             </div>
           </form>
         ` : '<div class="empty-state">No images uploaded yet.</div>'}
+
+        ${paginationHtml}
 
         <!-- Delete All Images form (hidden) -->
         <form id="deleteAllImgsForm" method="POST" action="/delete-all-images/${device}" style="display:none;"></form>
@@ -932,7 +965,7 @@ app.get("/user/:device_id/images", async (req, res) => {
       }
       function confirmDeleteAllImages() {
         document.getElementById('deleteImagesMsg').textContent =
-          'Delete ALL ${images.rows.length} images? They will be permanently removed from Cloudinary.';
+          'Delete ALL ${totalImages} images? They will be permanently removed from Cloudinary.';
         document.getElementById('deleteImagesModal').classList.add('open');
         document.getElementById('deleteImagesModal').dataset.deleteAll = 'true';
       }
